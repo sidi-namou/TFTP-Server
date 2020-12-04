@@ -1,0 +1,16 @@
+# depslib dependency file v1.0
+1605870319 source:c:\users\33766\desktop\workspace\tftp server\main.c
+	<stdio.h>
+	<stdlib.h>
+	"TFTPServer.h"
+
+1606935259 c:\users\33766\desktop\workspace\tftp server\tftpserver.h
+	<winsock2.h>
+	"stdio.h"
+
+1607115397 source:c:\users\33766\desktop\workspace\tftp server\tftpserver.c
+	"TFTPServer.h"
+	"winsock2.h"
+	<stdlib.h>
+	<stdint-gcc.h>
+

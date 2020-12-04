@@ -1,0 +1,241 @@
+#include "TFTPServer.h"
+#define TFTP_PORT   69
+#include "winsock2.h"
+#include <stdlib.h>
+
+#define COUNT (MAX_CHUNCK_SIZE -4)
+#define ErrorFileSize 0
+#define responseOK    1
+#define ErrorSend     2
+
+#define RQR                 1
+#define RQW                 2
+#define DATA                3
+#define ACK                 4
+#define ERROR_RESPONSE      5
+
+static int blockNumber = 1;
+static int serv;         // Identifiant du socket serveur
+static int iResult;      // Résultat des fonctions de la bibliothèque
+static char package[MAX_CHUNCK_SIZE];   // Tampon pour stocker les données reçues
+static char packageSend[MAX_CHUNCK_SIZE];
+static int len;          // Taille de la zone mémoire disponible pour l'adresse du client
+static int bytesRead;    // Longueur des données contenues dans le datagramme reçu
+static int bytesSend;
+static char FileName[100];
+struct sockaddr_in servAddr;
+struct sockaddr_storage clientAddr;
+
+static int waitForRQ(void);
+static int rqIsValid(void);
+static int findSize(char file_name[]);
+static int sendResponse(char file_name[]);
+static int waitForACK();
+
+static int sizeofFile;
+
+
+enum tftp_err tftp_server_init(void){
+
+
+    WSADATA wsaData;
+    iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
+    if (iResult !=0) {
+    printf("WSAStartup failed: %d\n",iResult);
+    return 1;
+    }
+
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servAddr.sin_port = htons(TFTP_PORT);
+    serv = socket(AF_INET,SOCK_DGRAM, IPPROTO_UDP);
+
+    if(serv == INVALID_SOCKET){
+            iResult = WSAGetLastError();
+     printf("INVALID SOCKET %d\n",iResult);
+     return  TFTPSERV_ERR;
+    }
+
+iResult = bind(serv,(struct sockaddr *)&servAddr, sizeof(servAddr));
+    if (iResult != 0) {
+    printf("bind failed: %d\n",iResult);
+    return TFTPSERV_ERR;
+    }
+
+        return TFTPSERV_OK;
+}
+
+
+
+
+void tftp_server_run(void ){
+
+while(1){
+
+    if(waitForRQ()==0 || rqIsValid()==0){
+      printf("TFTP SERVER HAS ENCOUNTERED A PROBLEM \n");
+      return;
+    }
+
+    printf("TFTP SERVER IS RUNNING \n");
+    if(sendResponse(FileName)!=responseOK)printf("\n Server Cannot send data");
+ //   while(waitForACK() != 1);
+}
+
+
+
+
+}
+
+static int waitForACK(){
+    len = sizeof(struct sockaddr_in);
+    ZeroMemory(&package,sizeof(package));
+    printf("Waiting for ACK...\n");
+    bytesRead = recvfrom(serv,package,MAX_CHUNCK_SIZE, 0, (struct sockaddr *) &clientAddr, &len);
+     if (bytesRead == SOCKET_ERROR)
+    {
+        iResult = WSAGetLastError();
+        printf("Error: %d\n",iResult);
+        return 0;
+    }
+    if(rqIsValid() != ACK)return 0;
+
+    return 1;
+}
+
+static int waitForRQ(void){
+
+
+    len = sizeof(struct sockaddr_in);
+    ZeroMemory(&package,sizeof(package));
+    printf("Waiting for datagram...\n");
+    bytesRead = recvfrom(serv,package,MAX_CHUNCK_SIZE, 0, (struct sockaddr *) &clientAddr, &len);
+     if (bytesRead == SOCKET_ERROR)
+    {
+        iResult = WSAGetLastError();
+        printf("Error: %d\n",iResult);
+        return 0;
+    }
+    return 1;
+}
+
+static int rqIsValid(void){
+    int opCode;
+    char mode[50];
+
+    int i =2;
+    int firstModeIndex;
+
+
+    opCode= package[0]*10 + package[1];
+
+    /** Only Read Request will be treated For this exercise*/
+
+    if(opCode != RQR && opCode != ACK)return 0; /** Request is not valid*/
+
+    switch(opCode){
+    case RQR:{
+    /** Only octet mode will be allowed*/
+    while(package[i] != 0 ){
+
+    FileName[i - 2] = package[i];
+    i++;
+    }
+    /** Convert FileName to string */
+     FileName[i - 2] = '\0';
+     i++;
+     firstModeIndex = i;
+
+
+     while(package[i] != 0 ){
+
+    mode[i - firstModeIndex] = package[i];
+     i++;
+    }
+    /** Convert mode to string */
+    mode[i-firstModeIndex] = '\0';
+    /**If mode is not octet --> request is not valid*/
+    if(strcmp(mode,"octet") != 0)return 0;
+    /**Otherwise request is valid*/
+    printf("\n mode of packet is : %s\n",mode);
+    printf("\n Name of file is : %s\n",FileName);
+   /** print size of file*/
+    sizeofFile = findSize(FileName);
+    if(sizeofFile == -1)return 0;
+    printf("size of file is %d octets \n",sizeofFile);
+
+    return RQR;
+    break;
+    }
+
+    case ACK:{
+
+         printf("ACK Received for block %d \n", package[2]*10 + package[3]);
+
+            return ACK;
+    break;
+    }
+    }
+
+
+}
+
+
+
+static int findSize(char file_name[])
+{
+    // opening the file in read mode
+    FILE* fp = fopen(file_name, "a");
+
+    // checking if the file exist or not
+    if (fp == NULL) {
+        printf("File Not Found!\n");
+        return -1;
+    }
+
+    fseek(fp, 0L, SEEK_END);
+
+    // calculating the size of the file
+     int res = ftell(fp);
+
+    // closing the file
+    fclose(fp);
+
+    return res;
+}
+
+static int sendResponse(char file_name[]){
+
+
+
+    FILE * file = fopen(file_name,"r");
+
+   do{
+          // if(bytesSend > COUNT)return ErrorFileSize;
+    packageSend[0] = 0;
+    packageSend[1] = 3;     /** Data */
+    packageSend[2] = 0;     /** Bloc 1 */
+    packageSend[3] = blockNumber;
+    blockNumber++;
+    bytesSend = fread( packageSend + 4, 1, MAX_CHUNCK_SIZE, file );
+    printf("La taille des octets lus %d\n",bytesSend);
+   // bytesSend = fread( packageSend + 4, 1, MAX_CHUNCK_SIZE, file );
+   if(bytesSend < MAX_CHUNCK_SIZE)blockNumber=1;
+    /**Send response to client*/
+    bytesSend = sendto(serv,packageSend,bytesSend+4,0,(struct sockaddr *) &clientAddr, len);
+    if (bytesSend == SOCKET_ERROR)
+    {
+        iResult = WSAGetLastError();
+        printf("Error: %d\n",iResult);
+        return ErrorSend;
+    }
+    printf("Number of bytes send is %d \n",bytesSend);
+
+    while(waitForACK() != 1);
+    sizeofFile = sizeofFile - bytesSend;
+    }while(sizeofFile>0);
+    fclose(file);
+
+
+    return responseOK;
+}
