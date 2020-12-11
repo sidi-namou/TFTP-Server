@@ -1,7 +1,7 @@
 # TFTP-Server
 A simple TFTP Server 
 
-This Project implements a simple TFTP server that respond to Get request from windows client server.
+This Project implements a simple TFTP server that respond to Get request from windows client TFTP.
 
 This project was suggested in a lab by our school.
 
